@@ -2,7 +2,7 @@
 #include <BluetoothSerial.h>
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#error Bluetooth is not enabled! Please run `make menuconfig` to enable it
 #endif
 
 #if !defined(CONFIG_BT_SPP_ENABLED)
@@ -10,71 +10,62 @@
 #endif
 
 BluetoothSerial SerialBT;
-
 #define BT_DISCOVER_TIME 10000
-esp_spp_sec_t sec_mask = ESP_SPP_SEC_NONE; // or ESP_SPP_SEC_ENCRYPT|ESP_SPP_SEC_AUTHENTICATE to request pincode confirmation
-esp_spp_role_t role = ESP_SPP_ROLE_SLAVE;  // or ESP_SPP_ROLE_MASTER
 
 void setup()
 {
   Serial.begin(115200);
   Serial.println("Starting...");
 
-  if (!SerialBT.begin("ESP32-Scanner", true))
+  // Initialize Bluetooth
+  if (!SerialBT.begin("ESP32-Scanner"))
   {
     Serial.println("Failed to initialize Bluetooth");
     abort();
   }
 
-  Serial.println("Starting discoverAsync for devices...");
-  BTScanResults *btDeviceList = SerialBT.getScanResults(); // maybe accessing from different threads!
-  if (SerialBT.discoverAsync([](BTAdvertisedDevice *pDevice)
-                             {
-      Serial.printf(">>>>>>>>>>>Found a new device asynchronously: %s\n", pDevice->toString().c_str());
-      String teststring= pDevice->toString().c_str();}))
+  // Start scanning
+  Serial.println("Scanning for devices...");
+  SerialBT.discover(BT_DISCOVER_TIME); // Blocking scan for the specified time
+  BTScanResults *btDeviceList = SerialBT.getScanResults();
+
+  if (btDeviceList->getCount() > 0)
   {
-    delay(BT_DISCOVER_TIME);
-    Serial.print("Stopping discoverAsync... ");
-    SerialBT.discoverAsyncStop();
-    Serial.println("discoverAsync stopped");
-    delay(1000);
-    if (btDeviceList->getCount() > 0)
+    Serial.printf("Found %d devices:\n", btDeviceList->getCount());
+    for (int i = 0; i < btDeviceList->getCount(); i++)
     {
-      BTAddress addr;
-      int channel = 0;
-      Serial.println("Found devices:");
-      for (int i = 0; i < btDeviceList->getCount(); i++)
+      BTAdvertisedDevice *device = btDeviceList->getDevice(i);
+
+      // Print basic device info
+      Serial.printf(" ----- Address: %s | Name: %s | RSSI: %d\n",
+                    device->getAddress().toString().c_str(),
+                    device->getName().c_str(),
+                    device->getRSSI());
+
+      // Scan for available channels/services on the device
+      Serial.println("     Scanning for available channels...");
+      std::map<int, std::string> channels = SerialBT.getChannels(device->getAddress());
+      if (channels.size() > 0)
       {
-        BTAdvertisedDevice *device = btDeviceList->getDevice(i);
-        Serial.printf(" ----- %s  %s %d\n", device->getAddress().toString().c_str(), device->getName().c_str(), device->getRSSI());
-        std::map<int, std::string> channels = SerialBT.getChannels(device->getAddress());
-        Serial.printf("scanned for services, found %d\n", channels.size());
+        Serial.printf("     Found %d channels:\n", channels.size());
         for (auto const &entry : channels)
         {
-          Serial.printf("     channel %d (%s)\n", entry.first, entry.second.c_str());
-        }
-        if (channels.size() > 0)
-        {
-          addr = device->getAddress();
-          channel = channels.begin()->first;
+          Serial.printf("         Channel %d: %s\n", entry.first, entry.second.c_str());
         }
       }
-    }
-    else
-    {
-      Serial.println("Didn't find any devices, restarting...");
-      delay(500);
-      ESP.restart();
+      else
+      {
+        Serial.println("     No channels found on this device.");
+      }
     }
   }
   else
   {
-    Serial.println("Error on discoverAsync, restarting...");
-    ESP.restart();
+    Serial.println("No devices found.");
   }
 }
 
 void loop()
 {
-  delay(1000);
+  delay(1000); // No repeated actions in the loop for this example
 }
