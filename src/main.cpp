@@ -19,21 +19,19 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println("Starting...");
+
   if (!SerialBT.begin("ESP32-Scanner", true))
   {
     Serial.println("Failed to initialize Bluetooth");
     abort();
   }
 
-  Serial.println("Scanning for devices...");
+  Serial.println("Starting discoverAsync for devices...");
   BTScanResults *btDeviceList = SerialBT.getScanResults(); // maybe accessing from different threads!
   if (SerialBT.discoverAsync([](BTAdvertisedDevice *pDevice)
                              {
-      // BTAdvertisedDeviceSet*set = reinterpret_cast<BTAdvertisedDeviceSet*>(pDevice);
-      // btDeviceList[pDevice->getAddress()] = * set;
       Serial.printf(">>>>>>>>>>>Found a new device asynchronously: %s\n", pDevice->toString().c_str());
-      //Test to see that correct device is found, else reset and try again
-      String teststring= pDevice->toString().c_str();
+      String teststring= pDevice->toString().c_str();}))
   {
     delay(BT_DISCOVER_TIME);
     Serial.print("Stopping discoverAsync... ");
@@ -68,6 +66,11 @@ void setup()
       delay(500);
       ESP.restart();
     }
+  }
+  else
+  {
+    Serial.println("Error on discoverAsync, restarting...");
+    ESP.restart();
   }
 }
 
